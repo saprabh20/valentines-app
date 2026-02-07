@@ -52,7 +52,7 @@ const GiftTwoPage = () => {
             bg-black
             object-contain
           "
-          src="/src/assets/gift2.mp4"
+          src="/gift2.mp4"
           controls
           playsInline
         />

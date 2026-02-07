@@ -70,7 +70,7 @@ const HomePage = () => {
       <div className="h-[42vh] sm:h-[50vh] flex justify-center z-10 w-full px-4 sm:px-6">
         <img
           className="rounded-4xl object-contain max-h-full w-full max-w-[520px] border-4 border-pink-100 shadow-md bg-white"
-          src={`/src/assets/img${currentImgIndex}.jpg`}
+          src={`/img${currentImgIndex}.jpg`}
           alt="Cute"
         />
       </div>
