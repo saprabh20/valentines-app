@@ -1,0 +1,14 @@
+.slide-container {
+  cursor: pointer;
+  position: relative;
+}
+
+.text-overlay {
+  opacity: 0;
+  background-color: rgba(0, 0, 0, 0.2);
+  transition: opacity 0.3s ease;
+}
+
+.slide-container:hover .text-overlay {
+  opacity: 1;
+}
