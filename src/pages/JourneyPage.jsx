@@ -9,10 +9,11 @@ import "swiper/css";
 import "swiper/css/navigation";
 
 const BUCKET = "images";
-const SIGNED_EXP_SECONDS = 60 * 60;
+const SIGNED_EXP_SECONDS = 60 * 60; // 1 hour
 const PREFETCH_RADIUS = 6;
 
 const isMediaFile = (name) => /\.(jpe?g|png|webp)$/i.test(name);
+
 const extractLeadingNumber = (name) => {
   const match = name.match(/^(\d+)/);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
@@ -32,6 +33,7 @@ const JourneyPage = () => {
   const [loading, setLoading] = useState(true);
 
   const signingInFlight = useRef(new Set());
+
   const cacheKey = (name) => `sb_signed_${BUCKET}_${name}`;
 
   const getCachedSigned = (name) => {
@@ -40,6 +42,7 @@ const JourneyPage = () => {
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed?.url || !parsed?.exp) return null;
+
       if (Date.now() > parsed.exp) {
         sessionStorage.removeItem(cacheKey(name));
         return null;
@@ -54,34 +57,58 @@ const JourneyPage = () => {
     try {
       const exp = Date.now() + expiresInSec * 1000 - 10_000;
       sessionStorage.setItem(cacheKey(name), JSON.stringify({ url, exp }));
-    } catch {}
+    } catch {
+      // ignore
+    }
+  };
+
+  const clearCachedSigned = (name) => {
+    try {
+      sessionStorage.removeItem(cacheKey(name));
+    } catch {
+      // ignore
+    }
+    setSignedUrlByName((prev) => {
+      if (!prev[name]) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
   };
 
   const ensureSignedForNames = async (names) => {
     const toFetch = [];
+    const currentMap = signedUrlByName;
+
     for (const name of names) {
       if (!name) continue;
-      if (signedUrlByName[name]) continue;
+
+      if (currentMap[name]) continue;
+
       const cached = getCachedSigned(name);
       if (cached) {
         setSignedUrlByName((prev) => ({ ...prev, [name]: cached }));
         continue;
       }
+
       if (signingInFlight.current.has(name)) continue;
       signingInFlight.current.add(name);
       toFetch.push(name);
     }
+
     if (toFetch.length === 0) return;
 
     let signedPairs = [];
     try {
       const api = supabase.storage.from(BUCKET);
+
       if (typeof api.createSignedUrls === "function") {
         const { data, error } = await api.createSignedUrls(
           toFetch,
           SIGNED_EXP_SECONDS
         );
         if (error) throw error;
+
         signedPairs = (data || [])
           .map((row) => ({ name: row.path, url: row.signedUrl }))
           .filter((x) => x.name && x.url);
@@ -121,9 +148,11 @@ const JourneyPage = () => {
   useEffect(() => {
     const init = async () => {
       setLoading(true);
+
       const { data, error } = await supabase.storage.from(BUCKET).list("", {
         limit: 1000,
       });
+
       if (error) {
         console.error("List error:", error);
         setLoading(false);
@@ -145,6 +174,7 @@ const JourneyPage = () => {
       const initial = sortedFiles
         .slice(0, PREFETCH_RADIUS + 2)
         .map((f) => f.name);
+
       await ensureSignedForNames(initial);
     };
 
@@ -168,9 +198,17 @@ const JourneyPage = () => {
     const active = swiper?.activeIndex ?? 0;
     const start = Math.max(0, active - PREFETCH_RADIUS);
     const end = Math.min(files.length - 1, active + PREFETCH_RADIUS);
+
     const names = [];
     for (let i = start; i <= end; i++) names.push(files[i]?.name);
+
     await ensureSignedForNames(names);
+  };
+
+  const handleImgError = async (name) => {
+    if (!name) return;
+    clearCachedSigned(name);
+    await ensureSignedForNames([name]);
   };
 
   if (loading) {
@@ -222,12 +260,24 @@ const JourneyPage = () => {
                       transition-all duration-300 ease-out
                       hover:-translate-y-1 hover:shadow-2xl hover:border-pink-400
                       cursor-pointer
-                      relative bg-center bg-no-repeat bg-contain
+                      relative
                     "
-                    style={{
-                      backgroundImage: img.url ? `url(${img.url})` : "none",
-                    }}
                   >
+                    {img.url ? (
+                      <img
+                        src={img.url}
+                        alt={img.title}
+                        className="w-full h-full object-contain rounded-4xl"
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => handleImgError(img.name)}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-pink-300">
+                        Loading image…
+                      </div>
+                    )}
+
                     <div
                       className="
                         absolute inset-0 rounded-4xl
@@ -237,12 +287,6 @@ const JourneyPage = () => {
                         pointer-events-none
                       "
                     />
-
-                    {!img.url && (
-                      <p className="absolute bottom-4 left-4 text-sm text-pink-300">
-                        Loading image…
-                      </p>
-                    )}
                   </div>
                 </div>
               </SwiperSlide>
@@ -251,13 +295,13 @@ const JourneyPage = () => {
         </div>
       </div>
 
+      {/* Mobile buttons uniform with your other pages */}
       <div className="w-full px-6 sm:px-0 flex flex-col sm:flex-row justify-center sm:justify-around items-center gap-4 h-[15vh] z-10">
         <Link to="/quote" className="w-full sm:w-auto">
           <button className="w-full sm:w-32 bg-pink-400 hover:bg-pink-500 h-12 sm:h-15 rounded-2xl border border-black text-lg sm:text-2xl text-white">
             Prev
           </button>
         </Link>
-
         <Link to="/gift1" className="w-full sm:w-auto">
           <button className="w-full sm:w-32 bg-pink-400 hover:bg-pink-500 h-12 sm:h-15 rounded-2xl border border-black text-lg sm:text-2xl text-white">
             Next
